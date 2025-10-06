@@ -63,6 +63,9 @@ public class Order {
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<OrderDetail> details;
 
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<OrderAdvance> advances;
+
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "quotation_id", unique = true)
     private Quotation quotation;
