@@ -23,9 +23,15 @@ import com.exercise_1.modules.reservation.entity.Reservation;
 import com.exercise_1.modules.reservation.entity.ReservationStatus;
 import com.exercise_1.modules.reservation.repository.ReservationRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -252,6 +258,176 @@ public class QuotationService {
                     .success(false)
                     .message("Error canceling quotation: " + e.getMessage())
                     .data(null)
+                    .build();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public QuotationSearchResponseDto search(String number, String status, String username,
+                                             String dateFrom, String dateTo,
+                                             Integer page, Integer size) {
+
+        int paramCount = 0;
+        if (number != null) paramCount++;
+        if (status != null) paramCount++;
+        if (username != null) paramCount++;
+        if (dateFrom != null || dateTo != null) paramCount++;
+
+        if (paramCount == 0) {
+            return QuotationSearchResponseDto.builder()
+                    .success(false)
+                    .message("At least one search parameter is required")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        if (paramCount > 1) {
+            return QuotationSearchResponseDto.builder()
+                    .success(false)
+                    .message("Only one search parameter is allowed at a time")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        if (page != null && page < 0) {
+            return QuotationSearchResponseDto.builder()
+                    .success(false)
+                    .message("Page number must be greater than or equal to 0")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        if (size != null && (size < 1 || size > 100)) {
+            return QuotationSearchResponseDto.builder()
+                    .success(false)
+                    .message("Page size must be between 1 and 100")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        int pageNumber = page != null ? page : 0;
+        int pageSize = size != null ? size : 20;
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        try {
+            Page<Quotation> quotationPage;
+
+            if (number != null) {
+                quotationPage = quotationRepository.findByNumberContainingIgnoreCase(number, pageable);
+            } else if (status != null) {
+                QuotationStatus quotationStatus;
+                try {
+                    quotationStatus = QuotationStatus.valueOf(status.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    return QuotationSearchResponseDto.builder()
+                            .success(false)
+                            .message("Invalid status value.")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+                quotationPage = quotationRepository.findByStatus(quotationStatus, pageable);
+            } else if (username != null) {
+                quotationPage = quotationRepository.findByUserUsernameContainingIgnoreCase(username, pageable);
+            } else {
+                if (dateFrom == null || dateTo == null) {
+                    return QuotationSearchResponseDto.builder()
+                            .success(false)
+                            .message("Both dateFrom and dateTo are required for date range search")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+
+                Instant instantFrom;
+                Instant instantTo;
+                try {
+                    instantFrom = Instant.parse(dateFrom);
+                    instantTo = Instant.parse(dateTo);
+                } catch (Exception e) {
+                    return QuotationSearchResponseDto.builder()
+                            .success(false)
+                            .message("Invalid date format. Use ISO-8601 format (e.g., 2025-10-01T00:00:00Z)")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+
+                if (instantFrom.isAfter(instantTo)) {
+                    return QuotationSearchResponseDto.builder()
+                            .success(false)
+                            .message("dateFrom must be before dateTo")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+
+                quotationPage = quotationRepository.findByCreatedAtBetween(instantFrom, instantTo, pageable);
+            }
+
+            if (quotationPage.isEmpty()) {
+                return QuotationSearchResponseDto.builder()
+                        .success(true)
+                        .message("No quotations found")
+                        .data(List.of())
+                        .pagination(QuotationSearchResponseDto.PaginationMetadata.builder()
+                                .currentPage(pageNumber)
+                                .totalPages(0)
+                                .totalElements(0L)
+                                .pageSize(pageSize)
+                                .hasNext(false)
+                                .hasPrevious(false)
+                                .build())
+                        .build();
+            }
+
+            List<QuotationSearchResponseDto.QuotationData> quotationDataList = quotationPage.getContent().stream()
+                    .map(quotation -> {
+                        BigDecimal totalAmount = quotation.getDetails().stream()
+                                .map(detail -> detail.getPrice().multiply(new BigDecimal(detail.getQuantity())))
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                        return QuotationSearchResponseDto.QuotationData.builder()
+                                .id(quotation.getId())
+                                .number(quotation.getNumber())
+                                .status(quotation.getStatus())
+                                .customerName(quotation.getCustomer().getName())
+                                .warehouseName(quotation.getWarehouse().getName())
+                                .username(quotation.getUser() != null ? quotation.getUser().getUsername() : null)
+                                .currency(quotation.getCurrency())
+                                .totalAmount(totalAmount)
+                                .itemCount((long) quotation.getDetails().size())
+                                .createdAt(quotation.getCreatedAt())
+                                .updatedAt(quotation.getUpdatedAt())
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+
+            return QuotationSearchResponseDto.builder()
+                    .success(true)
+                    .message("Quotations found successfully")
+                    .data(quotationDataList)
+                    .pagination(QuotationSearchResponseDto.PaginationMetadata.builder()
+                            .currentPage(quotationPage.getNumber())
+                            .totalPages(quotationPage.getTotalPages())
+                            .totalElements(quotationPage.getTotalElements())
+                            .pageSize(quotationPage.getSize())
+                            .hasNext(quotationPage.hasNext())
+                            .hasPrevious(quotationPage.hasPrevious())
+                            .build())
+                    .build();
+
+        } catch (Exception e) {
+            return QuotationSearchResponseDto.builder()
+                    .success(false)
+                    .message("Error searching quotations: " + e.getMessage())
+                    .data(null)
+                    .pagination(null)
                     .build();
         }
     }
