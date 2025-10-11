@@ -240,11 +240,10 @@ public class OrderService {
         }
 
         try {
-            Sale sale = createSaleFromOrder(order, dto.getUserId(), dto.getConfirmNotes());
+            Sale sale = createSaleFromOrder(order, dto.getUserId());
             Sale savedSale = saleRepository.save(sale);
 
             savedSale.setNumber(savedSale.getId().toString());
-            savedSale = saleRepository.save(savedSale);
 
             if (dto.getUserId() != null) {
                 order.setUser(User.builder().id(dto.getUserId()).build());
@@ -301,7 +300,7 @@ public class OrderService {
         }
     }
 
-    private Sale createSaleFromOrder(Order order, Long userId, String notes) {
+    private Sale createSaleFromOrder(Order order, Long userId) {
         Sale sale = Sale.builder()
                 .number(null)
                 .customer(order.getCustomer())
