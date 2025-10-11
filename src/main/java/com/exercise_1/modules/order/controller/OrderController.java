@@ -59,4 +59,23 @@ public class OrderController {
             }
         }
     }
+
+    @GetMapping("/search")
+    public ResponseEntity<OrderSearchResponseDto> search(
+            @RequestParam(required = false) String number,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+
+        OrderSearchResponseDto response = orderService.search(number, status, username, dateFrom, dateTo, page, size);
+
+        if (response.getSuccess()) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.badRequest().body(response);
+        }
+    }
 }

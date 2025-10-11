@@ -12,6 +12,7 @@ import com.exercise_1.modules.order.dto.*;
 import com.exercise_1.modules.order.entity.Order;
 import com.exercise_1.modules.order.entity.OrderDetail;
 import com.exercise_1.modules.order.entity.OrderStatus;
+import com.exercise_1.modules.order.repository.OrderAdvanceRepository;
 import com.exercise_1.modules.order.repository.OrderRepository;
 import com.exercise_1.modules.partner.entity.Customer;
 import com.exercise_1.modules.partner.repository.CustomerRepository;
@@ -25,9 +26,15 @@ import com.exercise_1.modules.sale.entity.SaleDetail;
 import com.exercise_1.modules.sale.entity.SaleStatus;
 import com.exercise_1.modules.sale.repository.SaleRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -36,6 +43,7 @@ import java.util.stream.Collectors;
 public class OrderService {
 
     private final OrderRepository orderRepository;
+    private final OrderAdvanceRepository orderAdvanceRepository;
     private final ReservationRepository reservationRepository;
     private final SaleRepository saleRepository;
     private final CustomerRepository customerRepository;
@@ -267,6 +275,180 @@ public class OrderService {
                     .success(false)
                     .message("Error confirming order: " + e.getMessage())
                     .data(null)
+                    .build();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public OrderSearchResponseDto search(String number, String status, String username,
+                                         String dateFrom, String dateTo,
+                                         Integer page, Integer size) {
+
+        int paramCount = 0;
+        if (number != null) paramCount++;
+        if (status != null) paramCount++;
+        if (username != null) paramCount++;
+        if (dateFrom != null || dateTo != null) paramCount++;
+
+        if (paramCount == 0) {
+            return OrderSearchResponseDto.builder()
+                    .success(false)
+                    .message("At least one search parameter is required")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        if (paramCount > 1) {
+            return OrderSearchResponseDto.builder()
+                    .success(false)
+                    .message("Only one search parameter is allowed at a time")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        if (page != null && page < 0) {
+            return OrderSearchResponseDto.builder()
+                    .success(false)
+                    .message("Page number must be greater than or equal to 0")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        if (size != null && (size < 1 || size > 100)) {
+            return OrderSearchResponseDto.builder()
+                    .success(false)
+                    .message("Page size must be between 1 and 100")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        int pageNumber = page != null ? page : 0;
+        int pageSize = size != null ? size : 20;
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        try {
+            Page<Order> orderPage;
+
+            if (number != null) {
+                orderPage = orderRepository.findByNumberContainingIgnoreCase(number, pageable);
+            } else if (status != null) {
+                OrderStatus orderStatus;
+                try {
+                    orderStatus = OrderStatus.valueOf(status.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    return OrderSearchResponseDto.builder()
+                            .success(false)
+                            .message("Invalid status value.")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+                orderPage = orderRepository.findByStatus(orderStatus, pageable);
+            } else if (username != null) {
+                orderPage = orderRepository.findByUserUsernameContainingIgnoreCase(username, pageable);
+            } else {
+                if (dateFrom == null || dateTo == null) {
+                    return OrderSearchResponseDto.builder()
+                            .success(false)
+                            .message("Both dateFrom and dateTo are required for date range search")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+
+                Instant instantFrom;
+                Instant instantTo;
+                try {
+                    instantFrom = Instant.parse(dateFrom);
+                    instantTo = Instant.parse(dateTo);
+                } catch (Exception e) {
+                    return OrderSearchResponseDto.builder()
+                            .success(false)
+                            .message("Invalid date format. Use ISO-8601 format (e.g., 2025-10-01T00:00:00Z)")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+
+                if (instantFrom.isAfter(instantTo)) {
+                    return OrderSearchResponseDto.builder()
+                            .success(false)
+                            .message("dateFrom must be before dateTo")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+
+                orderPage = orderRepository.findByCreatedAtBetween(instantFrom, instantTo, pageable);
+            }
+
+            if (orderPage.isEmpty()) {
+                return OrderSearchResponseDto.builder()
+                        .success(true)
+                        .message("No orders found")
+                        .data(List.of())
+                        .pagination(OrderSearchResponseDto.PaginationMetadata.builder()
+                                .currentPage(pageNumber)
+                                .totalPages(0)
+                                .totalElements(0L)
+                                .pageSize(pageSize)
+                                .hasNext(false)
+                                .hasPrevious(false)
+                                .build())
+                        .build();
+            }
+
+            List<OrderSearchResponseDto.OrderData> orderDataList = orderPage.getContent().stream()
+                    .map(order -> {
+                        BigDecimal totalAmount = order.getDetails().stream()
+                                .map(detail -> detail.getPrice().multiply(new BigDecimal(detail.getQuantity())))
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                        BigDecimal totalAdvances = orderAdvanceRepository.sumAmountByOrderId(order.getId());
+
+                        return OrderSearchResponseDto.OrderData.builder()
+                                .id(order.getId())
+                                .number(order.getNumber())
+                                .status(order.getStatus())
+                                .customerName(order.getCustomer().getName())
+                                .warehouseName(order.getWarehouse().getName())
+                                .username(order.getUser() != null ? order.getUser().getUsername() : null)
+                                .currency(order.getCurrency())
+                                .totalAmount(totalAmount)
+                                .itemCount((long) order.getDetails().size())
+                                .paymentName(order.getPayment() != null ? order.getPayment().getName() : null)
+                                .totalAdvances(totalAdvances)
+                                .createdAt(order.getCreatedAt())
+                                .updatedAt(order.getUpdatedAt())
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+
+            return OrderSearchResponseDto.builder()
+                    .success(true)
+                    .message("Orders found successfully")
+                    .data(orderDataList)
+                    .pagination(OrderSearchResponseDto.PaginationMetadata.builder()
+                            .currentPage(orderPage.getNumber())
+                            .totalPages(orderPage.getTotalPages())
+                            .totalElements(orderPage.getTotalElements())
+                            .pageSize(orderPage.getSize())
+                            .hasNext(orderPage.hasNext())
+                            .hasPrevious(orderPage.hasPrevious())
+                            .build())
+                    .build();
+
+        } catch (Exception e) {
+            return OrderSearchResponseDto.builder()
+                    .success(false)
+                    .message("Error searching orders: " + e.getMessage())
+                    .data(null)
+                    .pagination(null)
                     .build();
         }
     }
