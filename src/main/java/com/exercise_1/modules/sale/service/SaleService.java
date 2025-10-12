@@ -7,22 +7,25 @@ import com.exercise_1.modules.inventory.entity.Stock;
 import com.exercise_1.modules.inventory.repository.StockRepository;
 
 import com.exercise_1.modules.order.entity.OrderStatus;
+import com.exercise_1.modules.order.repository.OrderAdvanceRepository;
 import com.exercise_1.modules.reservation.entity.Reservation;
 import com.exercise_1.modules.reservation.entity.ReservationStatus;
 import com.exercise_1.modules.reservation.repository.ReservationRepository;
-import com.exercise_1.modules.sale.dto.SaleCancelDto;
-import com.exercise_1.modules.sale.dto.SaleConfirmDto;
-import com.exercise_1.modules.sale.dto.SaleHistoryResponseDto;
-import com.exercise_1.modules.sale.dto.SaleResponseDto;
+import com.exercise_1.modules.sale.dto.*;
 import com.exercise_1.modules.sale.entity.Sale;
 import com.exercise_1.modules.sale.entity.SaleDetail;
 import com.exercise_1.modules.sale.entity.SaleStatus;
 import com.exercise_1.modules.sale.repository.SaleRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -36,6 +39,7 @@ public class SaleService {
     private final StockRepository stockRepository;
     private final UserRepository userRepository;
     private final ProductRepository productRepository;
+    private final OrderAdvanceRepository orderAdvanceRepository;
 
     @Transactional(readOnly = true)
     public SaleHistoryResponseDto getSalesHistoryByProduct(Long productId, Integer limit) {
@@ -217,6 +221,181 @@ public class SaleService {
                     .success(false)
                     .message("Error confirming sale: " + e.getMessage())
                     .data(null)
+                    .build();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public SaleSearchResponseDto search(String number, String status, String username,
+                                        String dateFrom, String dateTo,
+                                        Integer page, Integer size) {
+
+        int paramCount = 0;
+        if (number != null) paramCount++;
+        if (status != null) paramCount++;
+        if (username != null) paramCount++;
+        if (dateFrom != null || dateTo != null) paramCount++;
+
+        if (paramCount == 0) {
+            return SaleSearchResponseDto.builder()
+                    .success(false)
+                    .message("At least one search parameter is required")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        if (paramCount > 1) {
+            return SaleSearchResponseDto.builder()
+                    .success(false)
+                    .message("Only one search parameter is allowed at a time")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        if (page != null && page < 0) {
+            return SaleSearchResponseDto.builder()
+                    .success(false)
+                    .message("Page number must be greater than or equal to 0")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        if (size != null && (size < 1 || size > 100)) {
+            return SaleSearchResponseDto.builder()
+                    .success(false)
+                    .message("Page size must be between 1 and 100")
+                    .data(null)
+                    .pagination(null)
+                    .build();
+        }
+
+        int pageNumber = page != null ? page : 0;
+        int pageSize = size != null ? size : 20;
+
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        try {
+            Page<Sale> salePage;
+
+            if (number != null) {
+                salePage = saleRepository.findByNumberContainingIgnoreCase(number, pageable);
+            } else if (status != null) {
+                SaleStatus saleStatus;
+                try {
+                    saleStatus = SaleStatus.valueOf(status.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    return SaleSearchResponseDto.builder()
+                            .success(false)
+                            .message("Invalid status value.")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+                salePage = saleRepository.findByStatus(saleStatus, pageable);
+            } else if (username != null) {
+                salePage = saleRepository.findByUserUsernameContainingIgnoreCase(username, pageable);
+            } else {
+                if (dateFrom == null || dateTo == null) {
+                    return SaleSearchResponseDto.builder()
+                            .success(false)
+                            .message("Both dateFrom and dateTo are required for date range search")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+
+                Instant instantFrom;
+                Instant instantTo;
+                try {
+                    instantFrom = Instant.parse(dateFrom);
+                    instantTo = Instant.parse(dateTo);
+                } catch (Exception e) {
+                    return SaleSearchResponseDto.builder()
+                            .success(false)
+                            .message("Invalid date format. Use ISO-8601 format (e.g., 2025-10-01T00:00:00Z)")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+
+                if (instantFrom.isAfter(instantTo)) {
+                    return SaleSearchResponseDto.builder()
+                            .success(false)
+                            .message("dateFrom must be before dateTo")
+                            .data(null)
+                            .pagination(null)
+                            .build();
+                }
+
+                salePage = saleRepository.findByCreatedAtBetween(instantFrom, instantTo, pageable);
+            }
+
+            if (salePage.isEmpty()) {
+                return SaleSearchResponseDto.builder()
+                        .success(true)
+                        .message("No sales found")
+                        .data(List.of())
+                        .pagination(SaleSearchResponseDto.PaginationMetadata.builder()
+                                .currentPage(pageNumber)
+                                .totalPages(0)
+                                .totalElements(0L)
+                                .pageSize(pageSize)
+                                .hasNext(false)
+                                .hasPrevious(false)
+                                .build())
+                        .build();
+            }
+
+            List<SaleSearchResponseDto.SaleData> saleDataList = salePage.getContent().stream()
+                    .map(sale -> {
+                        BigDecimal saleTotalAmount = sale.getDetails().stream()
+                                .map(detail -> detail.getPrice().multiply(new BigDecimal(detail.getQuantity())))
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                        BigDecimal orderTotalAdvances = orderAdvanceRepository.sumAmountByOrderId(sale.getOrder().getId());
+
+                        return SaleSearchResponseDto.SaleData.builder()
+                                .id(sale.getId())
+                                .number(sale.getNumber())
+                                .status(sale.getStatus())
+                                .customerName(sale.getCustomer().getName())
+                                .warehouseName(sale.getWarehouse().getName())
+                                .username(sale.getUser() != null ? sale.getUser().getUsername() : null)
+                                .currency(sale.getCurrency())
+                                .saleTotalAmount(saleTotalAmount)
+                                .itemCount((long) sale.getDetails().size())
+                                .paymentName(sale.getPayment() != null ? sale.getPayment().getName() : null)
+                                .orderId(sale.getOrder().getId())
+                                .orderTotalAdvances(orderTotalAdvances)
+                                .createdAt(sale.getCreatedAt())
+                                .updatedAt(sale.getUpdatedAt())
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+
+            return SaleSearchResponseDto.builder()
+                    .success(true)
+                    .message("Sales found successfully")
+                    .data(saleDataList)
+                    .pagination(SaleSearchResponseDto.PaginationMetadata.builder()
+                            .currentPage(salePage.getNumber())
+                            .totalPages(salePage.getTotalPages())
+                            .totalElements(salePage.getTotalElements())
+                            .pageSize(salePage.getSize())
+                            .hasNext(salePage.hasNext())
+                            .hasPrevious(salePage.hasPrevious())
+                            .build())
+                    .build();
+
+        } catch (Exception e) {
+            return SaleSearchResponseDto.builder()
+                    .success(false)
+                    .message("Error searching sales: " + e.getMessage())
+                    .data(null)
+                    .pagination(null)
                     .build();
         }
     }
