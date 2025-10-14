@@ -85,4 +85,15 @@ public class SaleController {
             return ResponseEntity.badRequest().body(response);
         }
     }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<SaleDetailResponseDto> getSaleById(@PathVariable Long id) {
+        SaleDetailResponseDto response = saleService.getSaleById(id);
+
+        if (response.getSuccess()) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+    }
 }

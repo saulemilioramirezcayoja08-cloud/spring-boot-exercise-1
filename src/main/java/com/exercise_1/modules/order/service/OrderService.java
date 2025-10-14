@@ -247,6 +247,26 @@ public class OrderService {
                     .build();
         }
 
+        BigDecimal orderTotal = order.getDetails().stream()
+                .map(detail -> detail.getPrice().multiply(BigDecimal.valueOf(detail.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalAdvances = orderAdvanceRepository.sumAmountByOrderId(orderId);
+
+        if (totalAdvances.compareTo(orderTotal) != 0) {
+            BigDecimal pending = orderTotal.subtract(totalAdvances);
+            String comparison = totalAdvances.compareTo(orderTotal) < 0 ? "less than" : "greater than";
+
+            return OrderResponseDto.builder()
+                    .success(false)
+                    .message(String.format(
+                            "Cannot confirm order. Total advances (%.2f) %s order total (%.2f). Pending: %.2f",
+                            totalAdvances, comparison, orderTotal, pending.abs()
+                    ))
+                    .data(null)
+                    .build();
+        }
+
         try {
             Sale sale = createSaleFromOrder(order, dto.getUserId());
             Sale savedSale = saleRepository.save(sale);
@@ -444,6 +464,161 @@ public class OrderService {
                     .message("Error searching orders: " + e.getMessage())
                     .data(null)
                     .pagination(null)
+                    .build();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public OrderDetailResponseDto getOrderById(Long orderId) {
+
+        Order order = orderRepository.findById(orderId).orElse(null);
+
+        if (order == null) {
+            return OrderDetailResponseDto.builder()
+                    .success(false)
+                    .message("Order not found")
+                    .data(null)
+                    .build();
+        }
+
+        try {
+            BigDecimal orderTotal = order.getDetails().stream()
+                    .map(detail -> detail.getPrice().multiply(BigDecimal.valueOf(detail.getQuantity())))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal totalAdvances = orderAdvanceRepository.sumAmountByOrderId(orderId);
+            BigDecimal pendingAmount = orderTotal.subtract(totalAdvances);
+
+            OrderDetailResponseDto.CustomerInfo customerInfo = OrderDetailResponseDto.CustomerInfo.builder()
+                    .id(order.getCustomer().getId())
+                    .name(order.getCustomer().getName())
+                    .build();
+
+            OrderDetailResponseDto.WarehouseInfo warehouseInfo = OrderDetailResponseDto.WarehouseInfo.builder()
+                    .id(order.getWarehouse().getId())
+                    .name(order.getWarehouse().getName())
+                    .build();
+
+            OrderDetailResponseDto.PaymentInfo paymentInfo = null;
+            if (order.getPayment() != null) {
+                paymentInfo = OrderDetailResponseDto.PaymentInfo.builder()
+                        .id(order.getPayment().getId())
+                        .name(order.getPayment().getName())
+                        .build();
+            }
+
+            OrderDetailResponseDto.UserInfo userInfo = null;
+            if (order.getUser() != null) {
+                userInfo = OrderDetailResponseDto.UserInfo.builder()
+                        .id(order.getUser().getId())
+                        .username(order.getUser().getUsername())
+                        .build();
+            }
+
+            OrderDetailResponseDto.QuotationInfo quotationInfo = null;
+            if (order.getQuotation() != null) {
+                quotationInfo = OrderDetailResponseDto.QuotationInfo.builder()
+                        .id(order.getQuotation().getId())
+                        .number(order.getQuotation().getNumber())
+                        .build();
+            }
+
+            List<OrderDetailResponseDto.OrderDetailInfo> detailsList = order.getDetails().stream()
+                    .map(detail -> {
+                        BigDecimal subtotal = detail.getPrice().multiply(BigDecimal.valueOf(detail.getQuantity()));
+                        return OrderDetailResponseDto.OrderDetailInfo.builder()
+                                .id(detail.getId())
+                                .productId(detail.getProduct().getId())
+                                .productName(detail.getProduct().getName())
+                                .productSku(detail.getProduct().getSku())
+                                .quantity(detail.getQuantity())
+                                .price(detail.getPrice())
+                                .subtotal(subtotal)
+                                .notes(detail.getNotes())
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+
+            List<OrderDetailResponseDto.AdvanceInfo> advancesList = order.getAdvances().stream()
+                    .map(advance -> OrderDetailResponseDto.AdvanceInfo.builder()
+                            .id(advance.getId())
+                            .amount(advance.getAmount())
+                            .createdAt(advance.getCreatedAt())
+                            .username(advance.getUser() != null ? advance.getUser().getUsername() : null)
+                            .build())
+                    .collect(Collectors.toList());
+
+            OrderDetailResponseDto.TotalsInfo totalsInfo = OrderDetailResponseDto.TotalsInfo.builder()
+                    .orderTotal(orderTotal)
+                    .totalAdvances(totalAdvances)
+                    .pendingAmount(pendingAmount)
+                    .itemCount((long) order.getDetails().size())
+                    .build();
+
+            OrderDetailResponseDto.SaleInfo saleInfo = null;
+            if (order.getSale() != null) {
+                saleInfo = OrderDetailResponseDto.SaleInfo.builder()
+                        .id(order.getSale().getId())
+                        .number(order.getSale().getNumber())
+                        .status(order.getSale().getStatus())
+                        .build();
+            }
+
+            List<Reservation> activeReservations = reservationRepository
+                    .findByOrderIdAndStatus(orderId, ReservationStatus.ACTIVE);
+            List<Reservation> consumedReservations = reservationRepository
+                    .findByOrderIdAndStatus(orderId, ReservationStatus.CONSUMED);
+            List<Reservation> canceledReservations = reservationRepository
+                    .findByOrderIdAndStatus(orderId, ReservationStatus.CANCELED);
+
+            long totalReservations = activeReservations.size() + consumedReservations.size() + canceledReservations.size();
+            String reservationStatus;
+            if (!activeReservations.isEmpty()) {
+                reservationStatus = "ACTIVE";
+            } else if (!consumedReservations.isEmpty()) {
+                reservationStatus = "CONSUMED";
+            } else if (!canceledReservations.isEmpty()) {
+                reservationStatus = "CANCELED";
+            } else {
+                reservationStatus = "NONE";
+            }
+
+            OrderDetailResponseDto.ReservationsInfo reservationsInfo = OrderDetailResponseDto.ReservationsInfo.builder()
+                    .count(totalReservations)
+                    .status(reservationStatus)
+                    .build();
+
+            OrderDetailResponseDto.OrderDetailData orderDetailData = OrderDetailResponseDto.OrderDetailData.builder()
+                    .id(order.getId())
+                    .number(order.getNumber())
+                    .status(order.getStatus())
+                    .currency(order.getCurrency())
+                    .notes(order.getNotes())
+                    .createdAt(order.getCreatedAt())
+                    .updatedAt(order.getUpdatedAt())
+                    .customer(customerInfo)
+                    .warehouse(warehouseInfo)
+                    .payment(paymentInfo)
+                    .user(userInfo)
+                    .quotation(quotationInfo)
+                    .details(detailsList)
+                    .advances(advancesList)
+                    .totals(totalsInfo)
+                    .sale(saleInfo)
+                    .reservations(reservationsInfo)
+                    .build();
+
+            return OrderDetailResponseDto.builder()
+                    .success(true)
+                    .message("Order retrieved successfully")
+                    .data(orderDetailData)
+                    .build();
+
+        } catch (Exception e) {
+            return OrderDetailResponseDto.builder()
+                    .success(false)
+                    .message("Error retrieving order details: " + e.getMessage())
+                    .data(null)
                     .build();
         }
     }

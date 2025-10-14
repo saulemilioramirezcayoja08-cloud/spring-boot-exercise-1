@@ -100,4 +100,15 @@ public class PurchaseController {
             }
         }
     }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<PurchaseDetailResponseDto> getPurchaseById(@PathVariable Long id) {
+        PurchaseDetailResponseDto response = purchaseService.getPurchaseById(id);
+
+        if (response.getSuccess()) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+    }
 }

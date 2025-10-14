@@ -78,4 +78,15 @@ public class OrderController {
             return ResponseEntity.badRequest().body(response);
         }
     }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<OrderDetailResponseDto> getOrderById(@PathVariable Long id) {
+        OrderDetailResponseDto response = orderService.getOrderById(id);
+
+        if (response.getSuccess()) {
+            return ResponseEntity.ok(response);
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+    }
 }

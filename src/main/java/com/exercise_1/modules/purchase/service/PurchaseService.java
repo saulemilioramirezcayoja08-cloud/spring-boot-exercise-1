@@ -483,6 +483,107 @@ public class PurchaseService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public PurchaseDetailResponseDto getPurchaseById(Long purchaseId) {
+
+        Purchase purchase = purchaseRepository.findById(purchaseId).orElse(null);
+
+        if (purchase == null) {
+            return PurchaseDetailResponseDto.builder()
+                    .success(false)
+                    .message("Purchase not found")
+                    .data(null)
+                    .build();
+        }
+
+        try {
+            BigDecimal purchaseTotal = purchase.getDetails().stream()
+                    .map(detail -> detail.getPrice().multiply(BigDecimal.valueOf(detail.getQuantity())))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            PurchaseDetailResponseDto.SupplierInfo supplierInfo = PurchaseDetailResponseDto.SupplierInfo.builder()
+                    .id(purchase.getSupplier().getId())
+                    .name(purchase.getSupplier().getName())
+                    .build();
+
+            PurchaseDetailResponseDto.WarehouseInfo warehouseInfo = PurchaseDetailResponseDto.WarehouseInfo.builder()
+                    .id(purchase.getWarehouse().getId())
+                    .name(purchase.getWarehouse().getName())
+                    .build();
+
+            PurchaseDetailResponseDto.PaymentInfo paymentInfo = null;
+            if (purchase.getPayment() != null) {
+                paymentInfo = PurchaseDetailResponseDto.PaymentInfo.builder()
+                        .id(purchase.getPayment().getId())
+                        .name(purchase.getPayment().getName())
+                        .build();
+            }
+
+            PurchaseDetailResponseDto.UserInfo userInfo = null;
+            if (purchase.getUser() != null) {
+                userInfo = PurchaseDetailResponseDto.UserInfo.builder()
+                        .id(purchase.getUser().getId())
+                        .username(purchase.getUser().getUsername())
+                        .build();
+            }
+
+            List<PurchaseDetailResponseDto.PurchaseDetailInfo> detailsList = purchase.getDetails().stream()
+                    .map(detail -> {
+                        BigDecimal subtotal = detail.getPrice().multiply(BigDecimal.valueOf(detail.getQuantity()));
+                        return PurchaseDetailResponseDto.PurchaseDetailInfo.builder()
+                                .id(detail.getId())
+                                .productId(detail.getProduct().getId())
+                                .productName(detail.getProduct().getName())
+                                .productSku(detail.getProduct().getSku())
+                                .quantity(detail.getQuantity())
+                                .price(detail.getPrice())
+                                .subtotal(subtotal)
+                                .notes(detail.getNotes())
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+
+            PurchaseDetailResponseDto.TotalsInfo totalsInfo = PurchaseDetailResponseDto.TotalsInfo.builder()
+                    .purchaseTotal(purchaseTotal)
+                    .itemCount((long) purchase.getDetails().size())
+                    .build();
+
+            PurchaseDetailResponseDto.StockInfo stockInfo = PurchaseDetailResponseDto.StockInfo.builder()
+                    .stockIncreased(purchase.getStatus() == PurchaseStatus.CONFIRMED)
+                    .build();
+
+            PurchaseDetailResponseDto.PurchaseDetailData purchaseDetailData = PurchaseDetailResponseDto.PurchaseDetailData.builder()
+                    .id(purchase.getId())
+                    .number(purchase.getNumber())
+                    .status(purchase.getStatus())
+                    .currency(purchase.getCurrency())
+                    .notes(purchase.getNotes())
+                    .createdAt(purchase.getCreatedAt())
+                    .updatedAt(purchase.getUpdatedAt())
+                    .supplier(supplierInfo)
+                    .warehouse(warehouseInfo)
+                    .payment(paymentInfo)
+                    .user(userInfo)
+                    .details(detailsList)
+                    .totals(totalsInfo)
+                    .stockInfo(stockInfo)
+                    .build();
+
+            return PurchaseDetailResponseDto.builder()
+                    .success(true)
+                    .message("Purchase retrieved successfully")
+                    .data(purchaseDetailData)
+                    .build();
+
+        } catch (Exception e) {
+            return PurchaseDetailResponseDto.builder()
+                    .success(false)
+                    .message("Error retrieving purchase details: " + e.getMessage())
+                    .data(null)
+                    .build();
+        }
+    }
+
     private String validateAndIncreaseStock(Purchase purchase) {
         for (PurchaseDetail detail : purchase.getDetails()) {
             Long productId = detail.getProduct().getId();

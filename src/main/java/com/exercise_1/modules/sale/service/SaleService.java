@@ -395,6 +395,151 @@ public class SaleService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public SaleDetailResponseDto getSaleById(Long saleId) {
+
+        Sale sale = saleRepository.findById(saleId).orElse(null);
+
+        if (sale == null) {
+            return SaleDetailResponseDto.builder()
+                    .success(false)
+                    .message("Sale not found")
+                    .data(null)
+                    .build();
+        }
+
+        try {
+            BigDecimal saleTotal = sale.getDetails().stream()
+                    .map(detail -> detail.getPrice().multiply(BigDecimal.valueOf(detail.getQuantity())))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            BigDecimal totalAdvances = orderAdvanceRepository.sumAmountByOrderId(sale.getOrder().getId());
+            BigDecimal balance = saleTotal.subtract(totalAdvances);
+
+            SaleDetailResponseDto.CustomerInfo customerInfo = SaleDetailResponseDto.CustomerInfo.builder()
+                    .id(sale.getCustomer().getId())
+                    .name(sale.getCustomer().getName())
+                    .build();
+
+            SaleDetailResponseDto.WarehouseInfo warehouseInfo = SaleDetailResponseDto.WarehouseInfo.builder()
+                    .id(sale.getWarehouse().getId())
+                    .name(sale.getWarehouse().getName())
+                    .build();
+
+            SaleDetailResponseDto.PaymentInfo paymentInfo = null;
+            if (sale.getPayment() != null) {
+                paymentInfo = SaleDetailResponseDto.PaymentInfo.builder()
+                        .id(sale.getPayment().getId())
+                        .name(sale.getPayment().getName())
+                        .build();
+            }
+
+            SaleDetailResponseDto.UserInfo userInfo = null;
+            if (sale.getUser() != null) {
+                userInfo = SaleDetailResponseDto.UserInfo.builder()
+                        .id(sale.getUser().getId())
+                        .username(sale.getUser().getUsername())
+                        .build();
+            }
+
+            List<SaleDetailResponseDto.SaleDetailInfo> detailsList = sale.getDetails().stream()
+                    .map(detail -> {
+                        BigDecimal subtotal = detail.getPrice().multiply(BigDecimal.valueOf(detail.getQuantity()));
+                        return SaleDetailResponseDto.SaleDetailInfo.builder()
+                                .id(detail.getId())
+                                .productId(detail.getProduct().getId())
+                                .productName(detail.getProduct().getName())
+                                .productSku(detail.getProduct().getSku())
+                                .quantity(detail.getQuantity())
+                                .price(detail.getPrice())
+                                .subtotal(subtotal)
+                                .notes(detail.getNotes())
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+
+            SaleDetailResponseDto.OrderInfo orderInfo = SaleDetailResponseDto.OrderInfo.builder()
+                    .id(sale.getOrder().getId())
+                    .number(sale.getOrder().getNumber())
+                    .status(sale.getOrder().getStatus())
+                    .notes(sale.getOrder().getNotes())
+                    .createdAt(sale.getOrder().getCreatedAt())
+                    .build();
+
+            List<SaleDetailResponseDto.AdvanceInfo> advancesList = sale.getOrder().getAdvances().stream()
+                    .map(advance -> SaleDetailResponseDto.AdvanceInfo.builder()
+                            .id(advance.getId())
+                            .amount(advance.getAmount())
+                            .createdAt(advance.getCreatedAt())
+                            .username(advance.getUser() != null ? advance.getUser().getUsername() : null)
+                            .build())
+                    .collect(Collectors.toList());
+
+            SaleDetailResponseDto.TotalsInfo totalsInfo = SaleDetailResponseDto.TotalsInfo.builder()
+                    .saleTotal(saleTotal)
+                    .totalAdvances(totalAdvances)
+                    .balance(balance)
+                    .itemCount((long) sale.getDetails().size())
+                    .build();
+
+            List<Reservation> activeReservations = reservationRepository
+                    .findByOrderIdAndStatus(sale.getOrder().getId(), ReservationStatus.ACTIVE);
+            List<Reservation> consumedReservations = reservationRepository
+                    .findByOrderIdAndStatus(sale.getOrder().getId(), ReservationStatus.CONSUMED);
+            List<Reservation> canceledReservations = reservationRepository
+                    .findByOrderIdAndStatus(sale.getOrder().getId(), ReservationStatus.CANCELED);
+
+            long totalReservations = activeReservations.size() + consumedReservations.size() + canceledReservations.size();
+            String reservationStatus;
+            if (!consumedReservations.isEmpty()) {
+                reservationStatus = "CONSUMED";
+            } else if (!activeReservations.isEmpty()) {
+                reservationStatus = "ACTIVE";
+            } else if (!canceledReservations.isEmpty()) {
+                reservationStatus = "CANCELED";
+            } else {
+                reservationStatus = "NONE";
+            }
+
+            SaleDetailResponseDto.ReservationsInfo reservationsInfo = SaleDetailResponseDto.ReservationsInfo.builder()
+                    .count(totalReservations)
+                    .status(reservationStatus)
+                    .build();
+
+            SaleDetailResponseDto.SaleDetailData saleDetailData = SaleDetailResponseDto.SaleDetailData.builder()
+                    .id(sale.getId())
+                    .number(sale.getNumber())
+                    .status(sale.getStatus())
+                    .currency(sale.getCurrency())
+                    .notes(sale.getNotes())
+                    .createdAt(sale.getCreatedAt())
+                    .updatedAt(sale.getUpdatedAt())
+                    .customer(customerInfo)
+                    .warehouse(warehouseInfo)
+                    .payment(paymentInfo)
+                    .user(userInfo)
+                    .details(detailsList)
+                    .order(orderInfo)
+                    .advances(advancesList)
+                    .totals(totalsInfo)
+                    .reservations(reservationsInfo)
+                    .build();
+
+            return SaleDetailResponseDto.builder()
+                    .success(true)
+                    .message("Sale retrieved successfully")
+                    .data(saleDetailData)
+                    .build();
+
+        } catch (Exception e) {
+            return SaleDetailResponseDto.builder()
+                    .success(false)
+                    .message("Error retrieving sale details: " + e.getMessage())
+                    .data(null)
+                    .build();
+        }
+    }
+
     private String validateAndReduceStock(Sale sale) {
         for (SaleDetail detail : sale.getDetails()) {
             Long productId = detail.getProduct().getId();
