@@ -58,7 +58,7 @@ public class Purchase {
     @JoinColumn(name = "user_id")
     private User user;
 
-    @OneToMany(mappedBy = "purchase")
+    @OneToMany(mappedBy = "purchase", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<PurchaseDetail> details;
 
     @PrePersist
