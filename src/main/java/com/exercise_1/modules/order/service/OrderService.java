@@ -415,16 +415,11 @@ public class OrderService {
                                 .id(order.getId())
                                 .number(order.getNumber())
                                 .status(order.getStatus())
-                                .customerName(order.getCustomer().getName())
-                                .warehouseName(order.getWarehouse().getName())
                                 .username(order.getUser() != null ? order.getUser().getUsername() : null)
-                                .currency(order.getCurrency())
                                 .totalAmount(totalAmount)
                                 .itemCount((long) order.getDetails().size())
-                                .paymentName(order.getPayment() != null ? order.getPayment().getName() : null)
                                 .totalAdvances(totalAdvances)
                                 .createdAt(order.getCreatedAt())
-                                .updatedAt(order.getUpdatedAt())
                                 .build();
                     })
                     .collect(Collectors.toList());

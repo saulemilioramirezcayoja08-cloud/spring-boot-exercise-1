@@ -29,16 +29,11 @@ public class OrderSearchResponseDto {
         private Long id;
         private String number;
         private OrderStatus status;
-        private String customerName;
-        private String warehouseName;
         private String username;
-        private String currency;
         private BigDecimal totalAmount;
         private Long itemCount;
-        private String paymentName;
         private BigDecimal totalAdvances;
         private Instant createdAt;
-        private Instant updatedAt;
     }
 
     @Data
