@@ -29,14 +29,10 @@ public class QuotationSearchResponseDto {
         private Long id;
         private String number;
         private QuotationStatus status;
-        private String customerName;
-        private String warehouseName;
         private String username;
-        private String currency;
         private BigDecimal totalAmount;
         private Long itemCount;
         private Instant createdAt;
-        private Instant updatedAt;
     }
 
     @Data

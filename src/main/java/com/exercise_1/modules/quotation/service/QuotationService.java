@@ -396,14 +396,10 @@ public class QuotationService {
                                 .id(quotation.getId())
                                 .number(quotation.getNumber())
                                 .status(quotation.getStatus())
-                                .customerName(quotation.getCustomer().getName())
-                                .warehouseName(quotation.getWarehouse().getName())
                                 .username(quotation.getUser() != null ? quotation.getUser().getUsername() : null)
-                                .currency(quotation.getCurrency())
                                 .totalAmount(totalAmount)
                                 .itemCount((long) quotation.getDetails().size())
                                 .createdAt(quotation.getCreatedAt())
-                                .updatedAt(quotation.getUpdatedAt())
                                 .build();
                     })
                     .collect(Collectors.toList());

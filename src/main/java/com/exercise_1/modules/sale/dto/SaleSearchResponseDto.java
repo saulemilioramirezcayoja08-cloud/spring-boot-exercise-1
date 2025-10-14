@@ -29,17 +29,12 @@ public class SaleSearchResponseDto {
         private Long id;
         private String number;
         private SaleStatus status;
-        private String customerName;
-        private String warehouseName;
         private String username;
-        private String currency;
         private BigDecimal saleTotalAmount;
         private Long itemCount;
-        private String paymentName;
         private Long orderId;
         private BigDecimal orderTotalAdvances;
         private Instant createdAt;
-        private Instant updatedAt;
     }
 
     @Data

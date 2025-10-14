@@ -361,17 +361,12 @@ public class SaleService {
                                 .id(sale.getId())
                                 .number(sale.getNumber())
                                 .status(sale.getStatus())
-                                .customerName(sale.getCustomer().getName())
-                                .warehouseName(sale.getWarehouse().getName())
                                 .username(sale.getUser() != null ? sale.getUser().getUsername() : null)
-                                .currency(sale.getCurrency())
                                 .saleTotalAmount(saleTotalAmount)
                                 .itemCount((long) sale.getDetails().size())
-                                .paymentName(sale.getPayment() != null ? sale.getPayment().getName() : null)
                                 .orderId(sale.getOrder().getId())
                                 .orderTotalAdvances(orderTotalAdvances)
                                 .createdAt(sale.getCreatedAt())
-                                .updatedAt(sale.getUpdatedAt())
                                 .build();
                     })
                     .collect(Collectors.toList());
