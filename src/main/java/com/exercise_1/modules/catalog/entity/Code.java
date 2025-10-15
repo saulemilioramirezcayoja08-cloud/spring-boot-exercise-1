@@ -23,6 +23,9 @@ public class Code {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
+    @Column(nullable = false, length = 80)
+    private String type;
+
     @Column(nullable = false, length = 120)
     private String code;
 
