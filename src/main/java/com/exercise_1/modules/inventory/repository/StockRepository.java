@@ -26,16 +26,21 @@ public interface StockRepository extends JpaRepository<Stock, StockId> {
             CROSS JOIN 
                 warehouses w
             LEFT JOIN 
-                stocks s ON s.product_id = p.id AND s.warehouse_id = w.id
-            INNER JOIN 
-                reservations r ON r.product_id = p.id 
-                               AND r.warehouse_id = w.id 
-                               AND r.status = 'ACTIVE'
+                stocks s 
+                    ON s.product_id = p.id 
+                   AND s.warehouse_id = w.id
+            LEFT JOIN 
+                reservations r 
+                    ON r.product_id = p.id 
+                   AND r.warehouse_id = w.id 
+                   AND r.status = 'ACTIVE'
             WHERE 
                 p.id = :productId
                 AND w.is_active = 1
             GROUP BY 
                 p.id, w.id, w.code, s.quantity
+            HAVING 
+                COALESCE(s.quantity, 0) > 0
             ORDER BY 
                 w.code
             """, nativeQuery = true)
