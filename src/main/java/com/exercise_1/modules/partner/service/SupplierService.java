@@ -4,12 +4,18 @@ import com.exercise_1.modules.auth.entity.User;
 import com.exercise_1.modules.auth.repository.UserRepository;
 import com.exercise_1.modules.partner.dto.SupplierCreateDto;
 import com.exercise_1.modules.partner.dto.SupplierDetailResponseDto;
+import com.exercise_1.modules.partner.dto.SupplierPageResponseDto;
 import com.exercise_1.modules.partner.dto.SupplierResponseDto;
 import com.exercise_1.modules.partner.entity.Supplier;
 import com.exercise_1.modules.partner.repository.SupplierRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -95,5 +101,72 @@ public class SupplierService {
                         .message("Supplier not found")
                         .data(null)
                         .build());
+    }
+
+    @Transactional(readOnly = true)
+    public SupplierPageResponseDto findAll(Pageable pageable) {
+        try {
+            Page<Supplier> supplierPage = supplierRepository.findAll(pageable);
+            return buildPageResponse(supplierPage, "Suppliers retrieved successfully");
+        } catch (Exception e) {
+            return SupplierPageResponseDto.builder()
+                    .success(false)
+                    .message("Error retrieving suppliers: " + e.getMessage())
+                    .data(null)
+                    .build();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public SupplierPageResponseDto searchByName(String name, Pageable pageable) {
+        try {
+            Page<Supplier> supplierPage = supplierRepository.findByNameContainingIgnoreCase(name, pageable);
+            return buildPageResponse(supplierPage, "Suppliers search completed successfully");
+        } catch (Exception e) {
+            return SupplierPageResponseDto.builder()
+                    .success(false)
+                    .message("Error searching suppliers: " + e.getMessage())
+                    .data(null)
+                    .build();
+        }
+    }
+
+    private SupplierPageResponseDto buildPageResponse(Page<Supplier> supplierPage, String message) {
+        List<SupplierPageResponseDto.SupplierListItem> content = supplierPage.getContent().stream()
+                .map(supplier -> SupplierPageResponseDto.SupplierListItem.builder()
+                        .id(supplier.getId())
+                        .taxId(supplier.getTaxId())
+                        .name(supplier.getName())
+                        .phone(supplier.getPhone())
+                        .email(supplier.getEmail())
+                        .address(supplier.getAddress())
+                        .active(supplier.isActive())
+                        .createdAt(supplier.getCreatedAt())
+                        .updatedAt(supplier.getUpdatedAt())
+                        .userId(supplier.getUser() != null ? supplier.getUser().getId() : null)
+                        .build())
+                .collect(Collectors.toList());
+
+        SupplierPageResponseDto.PaginationInfo pagination = SupplierPageResponseDto.PaginationInfo.builder()
+                .currentPage(supplierPage.getNumber())
+                .pageSize(supplierPage.getSize())
+                .totalElements(supplierPage.getTotalElements())
+                .totalPages(supplierPage.getTotalPages())
+                .isFirst(supplierPage.isFirst())
+                .isLast(supplierPage.isLast())
+                .hasNext(supplierPage.hasNext())
+                .hasPrevious(supplierPage.hasPrevious())
+                .build();
+
+        SupplierPageResponseDto.PageData pageData = SupplierPageResponseDto.PageData.builder()
+                .content(content)
+                .pagination(pagination)
+                .build();
+
+        return SupplierPageResponseDto.builder()
+                .success(true)
+                .message(message)
+                .data(pageData)
+                .build();
     }
 }
