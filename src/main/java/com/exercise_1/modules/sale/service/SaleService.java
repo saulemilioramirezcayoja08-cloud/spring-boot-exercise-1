@@ -419,6 +419,8 @@ public class SaleService {
             SaleDetailResponseDto.CustomerInfo customerInfo = SaleDetailResponseDto.CustomerInfo.builder()
                     .id(sale.getCustomer().getId())
                     .name(sale.getCustomer().getName())
+                    .address(sale.getCustomer().getAddress())
+                    .phone(sale.getCustomer().getPhone())
                     .build();
 
             SaleDetailResponseDto.WarehouseInfo warehouseInfo = SaleDetailResponseDto.WarehouseInfo.builder()
@@ -450,6 +452,7 @@ public class SaleService {
                                 .productId(detail.getProduct().getId())
                                 .productName(detail.getProduct().getName())
                                 .productSku(detail.getProduct().getSku())
+                                .uom(detail.getProduct().getUom())
                                 .quantity(detail.getQuantity())
                                 .price(detail.getPrice())
                                 .subtotal(subtotal)

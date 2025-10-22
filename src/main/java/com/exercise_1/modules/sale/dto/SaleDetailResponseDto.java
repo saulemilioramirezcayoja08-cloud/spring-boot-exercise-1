@@ -53,6 +53,8 @@ public class SaleDetailResponseDto {
     public static class CustomerInfo {
         private Long id;
         private String name;
+        private String address;  // ✅ CAMPO AGREGADO
+        private String phone;    // ✅ CAMPO AGREGADO
     }
 
     @Data
@@ -91,6 +93,7 @@ public class SaleDetailResponseDto {
         private Long productId;
         private String productName;
         private String productSku;
+        private String uom;          // ✅ CAMPO AGREGADO
         private Integer quantity;
         private BigDecimal price;
         private BigDecimal subtotal;
