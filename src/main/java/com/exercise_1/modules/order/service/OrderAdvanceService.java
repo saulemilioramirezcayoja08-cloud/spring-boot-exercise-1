@@ -25,7 +25,6 @@ public class OrderAdvanceService {
     @Transactional
     public OrderAdvanceResponseDto create(OrderAdvanceCreateDto dto) {
 
-        // 1. Validar que la orden existe
         Order order = orderRepository.findById(dto.getOrderId()).orElse(null);
         if (order == null) {
             return OrderAdvanceResponseDto.builder()
@@ -35,7 +34,6 @@ public class OrderAdvanceService {
                     .build();
         }
 
-        // 2. Validar que el usuario existe (si se proporciona)
         if (dto.getUserId() != null && !userRepository.existsById(dto.getUserId())) {
             return OrderAdvanceResponseDto.builder()
                     .success(false)
@@ -44,15 +42,12 @@ public class OrderAdvanceService {
                     .build();
         }
 
-        // 3. Calcular el total de la orden desde los detalles
         BigDecimal orderTotal = order.getDetails().stream()
                 .map(detail -> detail.getPrice().multiply(BigDecimal.valueOf(detail.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // 4. Sumar los anticipos existentes
         BigDecimal existingAdvances = orderAdvanceRepository.sumAmountByOrderId(dto.getOrderId());
 
-        // 5. Validar que no se exceda el total de la orden
         BigDecimal newTotal = existingAdvances.add(dto.getAmount());
 
         if (newTotal.compareTo(orderTotal) > 0) {
@@ -64,7 +59,6 @@ public class OrderAdvanceService {
                     .build();
         }
 
-        // 6. Crear el anticipo
         try {
             OrderAdvance advance = OrderAdvance.builder()
                     .order(order)

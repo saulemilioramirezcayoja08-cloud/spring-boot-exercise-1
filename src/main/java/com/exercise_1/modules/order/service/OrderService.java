@@ -492,6 +492,8 @@ public class OrderService {
             OrderDetailResponseDto.CustomerInfo customerInfo = OrderDetailResponseDto.CustomerInfo.builder()
                     .id(order.getCustomer().getId())
                     .name(order.getCustomer().getName())
+                    .address(order.getCustomer().getAddress())
+                    .phone(order.getCustomer().getPhone())
                     .build();
 
             OrderDetailResponseDto.WarehouseInfo warehouseInfo = OrderDetailResponseDto.WarehouseInfo.builder()
@@ -531,6 +533,7 @@ public class OrderService {
                                 .productId(detail.getProduct().getId())
                                 .productName(detail.getProduct().getName())
                                 .productSku(detail.getProduct().getSku())
+                                .uom(detail.getProduct().getUom())
                                 .quantity(detail.getQuantity())
                                 .price(detail.getPrice())
                                 .subtotal(subtotal)

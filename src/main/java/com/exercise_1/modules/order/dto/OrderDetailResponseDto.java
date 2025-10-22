@@ -54,6 +54,8 @@ public class OrderDetailResponseDto {
     public static class CustomerInfo {
         private Long id;
         private String name;
+        private String address;
+        private String phone;
     }
 
     @Data
@@ -101,6 +103,7 @@ public class OrderDetailResponseDto {
         private Long productId;
         private String productName;
         private String productSku;
+        private String uom;
         private Integer quantity;
         private BigDecimal price;
         private BigDecimal subtotal;
